@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.text.similarity.LevenshteinDistance;
 import org.gedcom4j.exception.GedcomParserException;
 import org.gedcom4j.model.Family;
 import org.gedcom4j.model.FamilyChild;
@@ -36,6 +37,14 @@ public class GedcomCompare {
 		final String name1 = i1.getNames().get(0).getBasic().toUpperCase();
 		final String name2 = i2.getNames().get(0).getBasic().toUpperCase();
 		return name1.equals(name2);
+	}
+
+	private static int getLevenshteinDistanceForName(final Individual i1, final Individual i2) {
+		final String name1 = i1.getNames().get(0).getBasic().toUpperCase();
+		final String name2 = i2.getNames().get(0).getBasic().toUpperCase();
+		final Integer distance = LevenshteinDistance.getDefaultInstance().apply(name1, name2);
+
+		return distance.intValue();
 	}
 
 	private static boolean checkIfSameIndividualSex(final Individual i1, final Individual i2,
@@ -78,8 +87,14 @@ public class GedcomCompare {
 		final List<IndividualEvent> events2 = i2.getEvents();
 
 		boolean ret = false;
-		if (events1 == null && events2 != null || events2 == null && events1 != null) {
-			ret = false;
+		if (events1 == null && events2 != null) {
+			for (final IndividualEvent individualEvent : events2) {
+				messages.add(i2.getNames().get(0).getBasic() + " Event: " + individualEvent.getType());
+			}
+		} else if (events2 == null && events1 != null) {
+			for (final IndividualEvent individualEvent : events1) {
+				messages.add(i1.getNames().get(0).getBasic() + " Event: " + individualEvent.getType());
+			}
 		} else if ((events1 == null && events2 == null) || (events1.isEmpty() && events2.isEmpty())) {
 			ret = true;
 		} else {
@@ -146,8 +161,11 @@ public class GedcomCompare {
 			final List<String> messages) {
 		final List<FamilyChild> familiesWhereChild1 = i1.getFamiliesWhereChild();
 		final List<FamilyChild> familiesWhereChild2 = i2.getFamiliesWhereChild();
-		if (familiesWhereChild1 == null && familiesWhereChild2 != null
-				|| familiesWhereChild2 == null && familiesWhereChild1 != null) {
+		if (familiesWhereChild1 != null && familiesWhereChild2 == null) {
+			messages.add("File1: parents exist File2: no parents");
+			return false;
+		} else if (familiesWhereChild2 != null && familiesWhereChild1 == null) {
+			messages.add("File2: parents exist File1: no parents");
 			return false;
 		} else if (familiesWhereChild1 != null && familiesWhereChild2 != null) {
 			final FamilyChild familyChild1 = familiesWhereChild1.get(0);
@@ -158,6 +176,10 @@ public class GedcomCompare {
 				if (!checkIfSameFamily(familyChild1.getFamily(), familyChild2.getFamily(), messages)) {
 					return false;
 				}
+			} else if (familyChild1 != null && familyChild2 == null) {
+				messages.add("File1: parents exist File2: no parents");
+			} else if (familyChild2 != null && familyChild1 == null) {
+				messages.add("File2: parents exist File1: no parents");
 			}
 		}
 
@@ -199,10 +221,69 @@ public class GedcomCompare {
 		if (family1 == null && family2 == null) {
 			return true;
 		} else if (family1 != null && family2 != null) {
-			return (checkIfSameIndividualReference(family1.getHusband(), family2.getHusband(), messages)
-					&& checkIfSameIndividualReference(family1.getWife(), family2.getWife(), messages))
-					|| (checkIfSameIndividualReference(family1.getHusband(), family2.getWife(), messages)
-							&& checkIfSameIndividualReference(family1.getWife(), family2.getHusband(), messages));
+			boolean ret = true;
+
+			if (family1.getHusband() != null && family2.getHusband() == null) {
+				messages.add("File 1: " + family1.getHusband().getIndividual().getNames().get(0).getBasic()
+						+ " File2: empty");
+				ret = false;
+			}
+			if (family2.getHusband() != null && family1.getHusband() == null) {
+				messages.add("File 2: " + family2.getHusband().getIndividual().getNames().get(0).getBasic()
+						+ " File1: empty");
+				ret = false;
+			}
+
+			if (family1.getWife() != null && family2.getWife() == null) {
+				messages.add(
+						"File 1: " + family1.getWife().getIndividual().getNames().get(0).getBasic() + " File2: empty");
+				ret = false;
+			}
+			if (family2.getWife() != null && family1.getWife() == null) {
+				messages.add(
+						"File 2: " + family2.getWife().getIndividual().getNames().get(0).getBasic() + " File1: empty");
+				ret = false;
+			}
+
+			if (family1.getHusband() != null && family2.getHusband() != null) {
+				final int distance1 = getLevenshteinDistanceForName(family1.getHusband().getIndividual(),
+						family2.getHusband().getIndividual());
+				if (family2.getWife() == null || distance1 == 0) {
+					ret &= checkIfSameIndividualReference(family1.getHusband(), family2.getHusband(), messages);
+				} else {
+					final int distance2 = getLevenshteinDistanceForName(family1.getHusband().getIndividual(),
+							family2.getWife().getIndividual());
+					if (distance2 < 5 && distance2 < distance1) {
+						messages.add("Husband (" + family1.getHusband().getIndividual().getNames().get(0).getBasic()
+								+ ") and Wife (" + family2.getWife().getIndividual().getNames().get(0).getBasic()
+								+ ") switched?");
+						ret = false;
+					} else {
+						ret &= checkIfSameIndividualReference(family1.getHusband(), family2.getHusband(), messages);
+					}
+				}
+			}
+
+			if (family1.getWife() != null && family2.getWife() != null) {
+				final int distance1 = getLevenshteinDistanceForName(family1.getWife().getIndividual(),
+						family2.getWife().getIndividual());
+				if (family2.getHusband() == null || distance1 == 0) {
+					ret &= checkIfSameIndividualReference(family1.getWife(), family2.getWife(), messages);
+				} else {
+					final int distance2 = getLevenshteinDistanceForName(family1.getWife().getIndividual(),
+							family2.getHusband().getIndividual());
+					if (distance2 < 5 && distance2 < distance1) {
+						messages.add("Wife (" + family1.getWife().getIndividual().getNames().get(0).getBasic()
+								+ ") and Husband (" + family2.getHusband().getIndividual().getNames().get(0).getBasic()
+								+ ") switched?");
+						ret = false;
+					} else {
+						ret &= checkIfSameIndividualReference(family1.getWife(), family2.getWife(), messages);
+					}
+				}
+			}
+
+			return ret;
 		}
 		return false;
 	}
@@ -241,8 +322,6 @@ public class GedcomCompare {
 						finalResult = checkIfSameIndividualFamilies(i1, i2, messages);
 						if (finalResult) {
 							break;
-						} else {
-							bestMatch.clear();
 						}
 					}
 					bestMatch.add(i2);

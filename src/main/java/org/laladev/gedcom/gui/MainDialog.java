@@ -28,7 +28,7 @@ public class MainDialog extends JPanel implements ActionListener {
 	File file2;
 	Logger logger;
 
-	public MainDialog() {
+	public MainDialog(final File file1, final File file2) {
 		super(new BorderLayout());
 
 		// Create the log first, because the action listeners
@@ -68,6 +68,13 @@ public class MainDialog extends JPanel implements ActionListener {
 		// Add the buttons and the log to this panel.
 		this.add(buttonPanel, BorderLayout.PAGE_START);
 		this.add(logScrollPane, BorderLayout.CENTER);
+
+		if (file1 != null) {
+			this.selectFile1(file1);
+		}
+		if (file2 != null) {
+			this.selectFile2(file2);
+		}
 	}
 
 	@Override
@@ -77,9 +84,7 @@ public class MainDialog extends JPanel implements ActionListener {
 		if (e.getSource() == this.openButton1) {
 			final int returnVal = this.fc.showOpenDialog(MainDialog.this);
 			if (returnVal == JFileChooser.APPROVE_OPTION) {
-				this.file1 = this.fc.getSelectedFile();
-				// This is where a real application would open the file.
-				this.openButton1.setText("Datei 1: " + this.file1.getName());
+				this.selectFile1(this.fc.getSelectedFile());
 			}
 			this.log.setCaretPosition(this.log.getDocument().getLength());
 
@@ -87,9 +92,7 @@ public class MainDialog extends JPanel implements ActionListener {
 		} else if (e.getSource() == this.openButton2) {
 			final int returnVal = this.fc.showOpenDialog(MainDialog.this);
 			if (returnVal == JFileChooser.APPROVE_OPTION) {
-				this.file2 = this.fc.getSelectedFile();
-				// This is where a real application would open the file.
-				this.openButton2.setText("Datei 2: " + this.file2.getName());
+				this.selectFile2(this.fc.getSelectedFile());
 			}
 			this.log.setCaretPosition(this.log.getDocument().getLength());
 		} else if (e.getSource() == this.startButton) {
@@ -104,6 +107,23 @@ public class MainDialog extends JPanel implements ActionListener {
 		} else if (e.getSource() == this.leerButton) {
 			this.log.setText("");
 		}
+	}
+
+	private void selectFile1(final File file) {
+		this.file1 = file;
+		// This is where a real application would open the file.
+		this.openButton1.setText("Datei 1: " + this.file1.getName());
+		this.enableStartIfFilesSelected();
+	}
+
+	private void selectFile2(final File file) {
+		this.file2 = file;
+		// This is where a real application would open the file.
+		this.openButton2.setText("Datei 2: " + this.file2.getName());
+		this.enableStartIfFilesSelected();
+	}
+
+	private void enableStartIfFilesSelected() {
 		if (this.file1 != null && this.file2 != null) {
 			this.startButton.setEnabled(true);
 		}
